@@ -4,6 +4,10 @@ import time
 import pyautogui
 from smooth import SmoothMouse
 
+# PyAutoGUI waits 0.1 seconds after every call by default. Disable that global
+# pause because moveTo is called for every camera frame.
+pyautogui.PAUSE = 0
+
 
 class MouseController:
     # Converts MediaPipe hand landmarks into operating-system mouse actions.
@@ -11,8 +15,10 @@ class MouseController:
         self.last_click_time = 0
         # Prevents repeated right-clicks while the same gesture is held.
         self.click_cooldown = 0.5
-        # Tracks whether the program is currently holding the left mouse button.
-        self.is_left_mouse_down = False
+        # A short pinch becomes a click; holding it for this duration starts a drag.
+        self.drag_delay = 0.5
+        self.pinch_started_at = None
+        self.is_dragging = False
 
         # Defines the inactive border around the camera frame for mouse mapping.
         self.frame_reduction = 100
@@ -43,21 +49,31 @@ class MouseController:
         middle_x = int(middle_tip.x * frame_width)
         middle_y = int(middle_tip.y * frame_height)
 
-        # Pinching thumb and index finger holds the left mouse button down.
-        # Releasing the pinch releases the left mouse button.
+        # A short thumb-index pinch is a click. The mouse button is held only
+        # after the pinch lasts long enough to deliberately start a drag.
         thumb_index_distance = math.hypot(
             index_x - thumb_x,
             index_y - thumb_y,
         )
 
         if thumb_index_distance < self.click_threshold:
-            if not self.is_left_mouse_down:
+            if self.pinch_started_at is None:
+                self.pinch_started_at = current_time
+            elif (
+                not self.is_dragging
+                and current_time - self.pinch_started_at >= self.drag_delay
+            ):
                 pyautogui.mouseDown()
-                self.is_left_mouse_down = True
+                self.is_dragging = True
 
-        elif self.is_left_mouse_down:
-            pyautogui.mouseUp()
-            self.is_left_mouse_down = False
+        elif self.pinch_started_at is not None:
+            if self.is_dragging:
+                pyautogui.mouseUp()
+            else:
+                pyautogui.click()
+
+            self.pinch_started_at = None
+            self.is_dragging = False
             self.last_click_time = current_time
 
         # Pinching thumb and middle finger performs a right-click. The cooldown
@@ -69,7 +85,8 @@ class MouseController:
 
         if (
             thumb_middle_distance < self.click_threshold
-            and not self.is_left_mouse_down
+            and self.pinch_started_at is None
+            and not self.is_dragging
             and current_time - self.last_click_time > self.click_cooldown
         ):
             pyautogui.rightClick()
@@ -94,7 +111,9 @@ class MouseController:
 
     def release_mouse(self):
         # Safety method used when tracking is lost or the camera closes. It
-        # ensures the operating system never keeps the left button pressed.
-        if self.is_left_mouse_down:
+        # cancels a pending click and ensures a drag never remains pressed.
+        if self.is_dragging:
             pyautogui.mouseUp()
-            self.is_left_mouse_down = False
+
+        self.pinch_started_at = None
+        self.is_dragging = False
