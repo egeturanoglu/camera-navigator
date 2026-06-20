@@ -80,7 +80,7 @@ while True:
             xp = int(pinky_tip.x * w)
             yp = int(pinky_tip.y * h)
 
-            # for click logic
+            # for left-click logic
             thumb_index_distance = math.hypot(
                 xi - xt, yi - yt
             )  # distance betweem index finger and the thumb
@@ -91,6 +91,18 @@ while True:
                 and current_time - last_click_time > click_cooldown
             ):
                 pyautogui.click()
+                last_click_time = current_time
+
+            # for right-click logic
+            thumb_middle_distance = math.hypot(
+                xm - xt, ym - yt
+            )  # distance betweem middle finger and the thumb
+
+            if (
+                thumb_middle_distance < click_threshold
+                and current_time - last_click_time > click_cooldown
+            ):
+                pyautogui.rightClick()
                 last_click_time = current_time
 
             # for mouse control (index) smoothening:
