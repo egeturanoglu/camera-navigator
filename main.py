@@ -9,6 +9,7 @@ from smooth import SmoothMouse
 # click cooldown config
 last_click_time = 0
 click_cooldown = 0.5
+is_left_mouse_down = False
 
 cap = cv2.VideoCapture(0)
 frame_reduction = 100  # safe zone
@@ -86,11 +87,15 @@ while True:
             )  # distance betweem index finger and the thumb
             click_threshold = 25
 
-            if (
-                thumb_index_distance < click_threshold
-                and current_time - last_click_time > click_cooldown
-            ):
-                pyautogui.click()
+            if thumb_index_distance < click_threshold:
+                if not is_left_mouse_down:
+                    pyautogui.mouseDown()  # mouse down -> click left-button button don't let go.
+                    is_left_mouse_down = True
+            elif (
+                is_left_mouse_down
+            ):  # only applied when index finger and thumb isnt close to each others
+                pyautogui.mouseUp()
+                is_left_mouse_down = False
                 last_click_time = current_time
 
             # for right-click logic
@@ -100,6 +105,7 @@ while True:
 
             if (
                 thumb_middle_distance < click_threshold
+                and not is_left_mouse_down
                 and current_time - last_click_time > click_cooldown
             ):
                 pyautogui.rightClick()
@@ -144,6 +150,11 @@ while True:
                 (0, 255, 0),
                 2,
             )  # put a text at the screen
+
+    elif is_left_mouse_down:
+        # Do not leave the OS mouse button pressed if hand tracking is lost.
+        pyautogui.mouseUp()
+        is_left_mouse_down = False
 
     cv2.imshow(
         "Hand Tracking", frame
