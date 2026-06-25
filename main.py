@@ -28,12 +28,33 @@ class MouseController:
         # SmoothMouse reduces sudden cursor jumps between frames.
         self.mouse_smoother = SmoothMouse(smoothening=3)
         self.screen_width, self.screen_height = pyautogui.size()
+        self.navigation_active = True
+        self.last_thumb_gesture_time = 0
+        self.thumb_gesture_cooldown = 1.0
 
     def handle_hand(self, hand_landmarks, frame_width, frame_height):
         # Scene calls this whenever MediaPipe detects a hand. Landmark positions
         # are normalized, so they are converted to camera-frame pixels below.
         current_time = time.time()
         landmarks = hand_landmarks.landmark
+
+        thumb_state = self.detect_thumb_state(landmarks)
+        if (
+            thumb_state is not None
+            and current_time - self.last_thumb_gesture_time > self.thumb_gesture_cooldown
+        ):
+            self.last_thumb_gesture_time = current_time
+
+            if thumb_state == "up":
+                self.navigation_active = True
+                return "Mouse navigation active"
+
+            self.navigation_active = False
+            self.release_mouse()
+            return "Mouse navigation inactive"
+
+        if not self.navigation_active:
+            return None
 
         # Landmark indexes: 8=index tip, 4=thumb tip, 12=middle-finger tip.
         index_tip = landmarks[8]
@@ -108,6 +129,40 @@ class MouseController:
 
         current_x, current_y = self.mouse_smoother.smooth(mouse_x, mouse_y)
         pyautogui.moveTo(current_x, current_y)
+        return None
+
+    def detect_thumb_state(self, landmarks):
+        # Treat a vertical thumb with folded fingers as thumbs up/down.
+        thumb_tip = landmarks[4]
+        thumb_ip = landmarks[3]
+        thumb_mcp = landmarks[2]
+        wrist = landmarks[0]
+
+        finger_pairs = (
+            (8, 6),
+            (12, 10),
+            (16, 14),
+            (20, 18),
+        )
+        folded_fingers = sum(
+            1 for tip_index, pip_index in finger_pairs
+            if landmarks[tip_index].y > landmarks[pip_index].y
+        )
+
+        if folded_fingers < 3:
+            return None
+
+        vertical_thumb = abs(thumb_tip.y - thumb_mcp.y) > abs(thumb_tip.x - thumb_mcp.x) # check if the thumb is vertical
+        if not vertical_thumb:
+            return None
+
+        if thumb_tip.y < thumb_ip.y < thumb_mcp.y and thumb_tip.y < wrist.y:
+            return "up"
+
+        if thumb_tip.y > thumb_ip.y > thumb_mcp.y and thumb_tip.y > wrist.y:
+            return "down"
+
+        return None
 
     def release_mouse(self):
         # Safety method used when tracking is lost or the camera closes. It
