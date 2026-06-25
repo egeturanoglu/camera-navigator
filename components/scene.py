@@ -1,5 +1,6 @@
 import tkinter as tk
 import threading
+import time
 
 import cv2
 import mediapipe as mp
@@ -22,6 +23,8 @@ class Scene:
         self.camera_starting = False
         self.is_closing = False
         self.preview_size = (800, 520)
+        self.status_message = ""
+        self.status_visible_until = 0
 
         self.mp_hands = mp.solutions.hands
         self.mp_draw = mp.solutions.drawing_utils
@@ -66,6 +69,16 @@ class Scene:
             font=("Arial", 14),
         )
         self.camera_label.place(relx=0, rely=0, relwidth=1, relheight=1)
+
+        self.status_label = tk.Label(
+            self.preview_frame,
+            text="",
+            bg="#111827",
+            fg="white",
+            font=("Arial", 13, "bold"),
+            padx=14,
+            pady=8,
+        )
 
         self.camera_button = Button(
             root,
@@ -188,7 +201,9 @@ class Scene:
                 )
 
                 # Send landmarks to MouseController through the callback.
-                self.on_hand_detected(hand_landmarks, width, height)
+                status_message = self.on_hand_detected(hand_landmarks, width, height)
+                if status_message:
+                    self.show_status(status_message)
         else:
             self.on_tracking_lost()
 
@@ -209,6 +224,20 @@ class Scene:
         self.camera_label.configure(image=image_tk, text="")
         # Keep a reference or Python may garbage-collect the preview image.
         self.camera_label.image = image_tk
+        self.update_status_label()
+
+    def show_status(self, message):
+        self.status_message = message
+        self.status_visible_until = time.time() + 1
+        self.update_status_label()
+
+    def update_status_label(self):
+        if self.status_message and time.time() < self.status_visible_until:
+            self.status_label.configure(text=self.status_message)
+            self.status_label.place(relx=0.5, rely=0.08, anchor="center")
+            self.status_label.lift()
+        else:
+            self.status_label.place_forget()
 
     def close_app(self):
         # Release mouse, camera, and MediaPipe resources before closing.
